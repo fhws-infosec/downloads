@@ -1,0 +1,53 @@
+# install squid with SSL support
+sudo apt install squid-openssl
+
+# generate your own certificate authority (CA)
+sudo mkdir /etc/squid/cert
+cd /etc/squid/cert
+sudo openssl req -new -newkey rsa:2048 -sha256 -days 365 -nodes -x509 -extensions v3_ca -keyout myCA.pem -out myCA.pem
+sudo openssl x509 -in myCA.pem -outform DER -out myCA.der
+
+# adapt the configuration of Squid to enable ssl-bump with your CA
+sudo nano -c /etc/squid/squid.conf
+
+    # Squid normally listens to port 3128
+    http_port 3128 ssl-bump cert=/etc/squid/cert/myCA.pem generate-host-certificate>
+    sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/ssl_db -M 4MB
+
+    acl step1 at_step SslBump1
+    ssl_bump peek step1
+    ssl_bump bump all
+
+# finally, start the tool that generates new certificates signed by your CA
+sudo /usr/lib/squid/security_file_certgen -c -s /var/lib/ssl_db -M 4MB
+sudo systemctl restart squid
+
+# configure your browser to use the proxy (for http & https)
+127.0.0.1:3128
+
+# copy CA to your home and import it to Firefox (Zertifikatverwaltung)
+sudo cp /etc/squid/cert/myCA.der /home/toor
+sudo chown toor /home/toor/myCA.der
+
+# install and test clamAV (free virus scanner)
+sudo apt install clamav
+
+# install c-icap
+sudo apt install c-icap libc-icap-mod-virus-scan libicapapi-dev
+
+# add these three lines to the config (at the end)
+sudo nano /etc/c-icap/c-icap.conf
+
+    Include clamav_mod.conf
+    Include clamd_mod.conf
+    Include virus_scan.conf
+    
+# start the service (and use a new shell window to proceed)
+sudo /usr/bin/c-icap -N -D -d 10
+
+# downlad & scan the EICAR test file
+wget https://secure.eicar.org/eicar.com
+mv eicar.com eicar.exe
+
+c-icap-client -f /bin/ls -s "srv_clamav"
+c-icap-client -f eicar.exe -s "srv_clamav"
